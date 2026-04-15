@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEDULE_HOURS = [7, 12, 17]
+SCHEDULE_HOURS = [7]
 
 
 def start_scheduler(workflow_service: WorkflowService, timezone: str) -> BackgroundScheduler:
