@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.env
+.git
+.pytest_cache
+data/output/*.md
+data/output/*.docx
+data/output/*.html
+data/output/*.xlsx
+data/workflow.db
+.venv
+venv

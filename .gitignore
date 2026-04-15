@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+data/output/*.md
+data/output/*.docx
+data/output/*.html
+data/output/*.xlsx
+data/workflow.db
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+*.DS_Store
