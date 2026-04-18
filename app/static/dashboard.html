@@ -315,15 +315,22 @@ async function runWorkflow() {
   const btn = document.getElementById('runBtn');
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Running...';
-  showToast('Workflow started — fetching real jobs...');
+  showToast('Workflow started — scanning 21 company boards (takes ~30-60s)...');
+  const startTime = Date.now();
+  const progressInterval = setInterval(() => {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    btn.innerHTML = `<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> ${elapsed}s...`;
+  }, 1000);
   try {
     const resp = await fetch(API + '/workflow/run', { method: 'POST' });
     const result = await resp.json();
-    showToast(`Done! ${result.success_count} resumes tailored, ${result.failed_count} failed`);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    showToast(`Done in ${elapsed}s! ${result.success_count} resumes tailored, ${result.jobs_found} jobs scanned`);
     loadData();
   } catch (e) {
     showToast('Workflow failed: ' + e.message, true);
   } finally {
+    clearInterval(progressInterval);
     btn.disabled = false;
     btn.innerHTML = 'Run Workflow Now';
   }

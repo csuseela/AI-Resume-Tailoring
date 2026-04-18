@@ -16,16 +16,25 @@ class MultiFetcher(BaseJobFetcher):
         self.fetchers = fetchers
 
     def fetch(self, lookback_hours: int = 24):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         from app.schemas.job import JobListing
 
         all_jobs: List[JobListing] = []
-        for fetcher in self.fetchers:
-            try:
-                jobs = fetcher.fetch(lookback_hours)
-                all_jobs.extend(jobs)
-                logger.info("%s returned %d jobs", type(fetcher).__name__, len(jobs))
-            except Exception as exc:
-                logger.warning("%s failed: %s", type(fetcher).__name__, exc)
+
+        with ThreadPoolExecutor(max_workers=len(self.fetchers)) as pool:
+            futures = {
+                pool.submit(f.fetch, lookback_hours): type(f).__name__
+                for f in self.fetchers
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    jobs = future.result()
+                    all_jobs.extend(jobs)
+                    logger.info("%s returned %d jobs", name, len(jobs))
+                except Exception as exc:
+                    logger.warning("%s failed: %s", name, exc)
+
         logger.info("MultiFetcher total: %d jobs from %d sources", len(all_jobs), len(self.fetchers))
         return all_jobs
 

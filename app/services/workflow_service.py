@@ -4,12 +4,16 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from app.schemas.job import JobListing
 from app.schemas.tracker import TrackerCreate
 from app.services.docx_writer import DocxWriterService
 from app.services.email_service import EmailService
 from app.services.excel_tracker import ExcelTrackerService
 from app.services.fetchers.base import BaseJobFetcher
+from app.services.fetchers.greenhouse_fetcher import GreenhouseFetcher
 from app.services.job_ranker import JobRankerService
 from app.services.llm_service import LLMService
 from app.services.output_writer import OutputWriterService
@@ -65,15 +69,18 @@ class WorkflowService:
             logger.info("Jobs selected after ranking: %d", len(ranked_jobs))
 
             already_processed = self.tracker_service.get_today_job_ids()
+
+            jobs_to_process = [j for j in ranked_jobs if j.id not in already_processed]
+            skipped_count = len(ranked_jobs) - len(jobs_to_process)
+            if skipped_count:
+                logger.info("Skipping %d already-processed jobs", skipped_count)
+
+            self._enrich_descriptions(jobs_to_process)
+
             master_resume = self.resume_loader.load()
             logger.info("Master resume loaded (%d chars)", len(master_resume))
 
-            for job in ranked_jobs:
-                if job.id in already_processed:
-                    logger.info("Skipping already-processed job: %s at %s", job.title, job.company)
-                    skipped_count += 1
-                    continue
-
+            for job in jobs_to_process:
                 processed_jobs += 1
                 output_path = Path("")
                 docx_path = Path("")
@@ -166,3 +173,24 @@ class WorkflowService:
             "failed_count": failed_count,
             "skipped_count": skipped_count,
         }
+
+    @staticmethod
+    def _enrich_descriptions(jobs: List[JobListing]) -> None:
+        """Fetch full descriptions for ranked jobs in parallel (only for Greenhouse)."""
+        gh_jobs = [j for j in jobs if j.source == "greenhouse" and len(j.description) < 200]
+        if not gh_jobs:
+            return
+
+        logger.info("Enriching descriptions for %d Greenhouse jobs...", len(gh_jobs))
+
+        def _fetch_desc(job: JobListing) -> None:
+            slug = re.sub(r"[^a-z0-9]+", "", job.company.lower())
+            url_slug = job.url.split("job-boards.greenhouse.io/")[1].split("/")[0] if "job-boards.greenhouse.io/" in job.url else slug
+            desc = GreenhouseFetcher.fetch_job_description(url_slug, job.id)
+            if desc:
+                job.description = desc
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(_fetch_desc, gh_jobs))
+
+        logger.info("Description enrichment complete")
