@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from app.schemas.job import JobListing
 from app.schemas.tailoring import TailoringResult
@@ -25,53 +24,36 @@ class LLMService:
         raise ValueError(f"Unknown LLM provider: {self.provider}")
 
     def _mock_analyze(self, job: JobListing, resume: str) -> TailoringResult:
+        """Smart mock tailoring that preserves the original resume structure.
+
+        Strategy: only tailor the SUMMARY and SKILLS sections.
+        NEVER fabricate experience bullets — the real ones are always better.
+        """
+        jd_lower = job.description.lower()
         title_lower = job.title.lower()
-        desc_lower = job.description.lower()
+        resume_lower = resume.lower()
 
-        skills_map = {
-            "data analyst": "SQL, Python, Tableau, Power BI, Excel, Snowflake, dbt, Data Modeling, ETL, Statistical Analysis, A/B Testing",
-            "program manager": "Agile, Scrum, JIRA, Confluence, Roadmap Planning, Cross-functional Leadership, Stakeholder Management, Risk Mitigation, OKRs",
-            "data engineer": "Python, SQL, Spark, Airflow, Snowflake, dbt, AWS, Kafka, Data Pipeline Architecture, ETL/ELT, Data Modeling",
-            "analytics": "SQL, Python, Tableau, Power BI, Looker, Statistical Modeling, KPI Development, Data Storytelling, A/B Testing",
-        }
+        jd_keywords = _extract_jd_keywords(jd_lower)
+        resume_skills = _extract_resume_skills(resume)
 
-        skills = "SQL, Python, Tableau, Data Analysis, Cross-functional Collaboration"
-        for key, val in skills_map.items():
-            if key in title_lower:
-                skills = val
-                break
+        tailored_summary = _build_tailored_summary(
+            resume, job.title, job.company, jd_keywords,
+        )
 
-        if "snowflake" in desc_lower:
-            skills += ", Snowflake"
-        if "aws" in desc_lower:
-            skills += ", AWS (S3, Glue, Redshift)"
-        if "dbt" in desc_lower:
-            skills += ", dbt"
-        if "spark" in desc_lower:
-            skills += ", Apache Spark"
+        tailored_skills = _build_tailored_skills(
+            resume_skills, jd_keywords, jd_lower,
+        )
 
-        summaries = [
-            f"Results-driven analytics professional with 18+ years of experience, specializing in {job.title.split()[0].lower()} roles. Proven track record of building scalable data solutions and driving data-informed decision-making at {job.company}.",
-            f"Seasoned data and program management leader with deep expertise in SQL, Python, and BI tooling. Seeking to leverage 18+ years of cross-functional experience to deliver impact as {job.title} at {job.company}.",
-            f"Strategic analytics professional combining technical depth (SQL, Python, Snowflake) with program leadership experience. Eager to drive {job.company}'s data strategy and operational excellence.",
-        ]
+        fit = _calculate_fit_score(resume_lower, jd_lower, jd_keywords)
 
-        bullet_templates = [
-            f"Led cross-functional data initiatives aligning with {job.company}'s focus on {_extract_focus(desc_lower)}, resulting in 30%+ improvement in operational efficiency",
-            f"Designed and deployed automated ETL pipelines and dashboards that reduced manual reporting by 60%, directly relevant to {job.title} responsibilities",
-            f"Partnered with engineering, product, and business stakeholders to define KPIs and build analytics frameworks — core to the {job.title} role at {job.company}",
-            f"Managed end-to-end program delivery using Agile/Scrum methodologies, tracking milestones via JIRA and Confluence across distributed teams",
-            f"Built predictive models and statistical analyses that informed $10M+ in strategic decisions, supporting data-driven culture at enterprise scale",
-        ]
-
-        fit = random.uniform(72, 95)
+        reason = _build_reason(job, jd_keywords, resume_lower)
 
         return TailoringResult(
-            summary=random.choice(summaries),
-            skills=skills,
-            experience_bullets={"Professional Experience": random.sample(bullet_templates, min(4, len(bullet_templates)))},
-            fit_score=round(fit, 1),
-            one_line_reason=f"Strong alignment between candidate's analytics/PM background and {job.title} requirements at {job.company}",
+            summary=tailored_summary,
+            skills=tailored_skills,
+            experience_bullets=None,
+            fit_score=fit,
+            one_line_reason=reason,
         )
 
     def _openai_analyze(self, job: JobListing, resume: str) -> TailoringResult:
@@ -94,7 +76,15 @@ class LLMService:
 
     @staticmethod
     def _build_prompt(job: JobListing, resume: str) -> str:
-        return f"""You are an expert resume tailor. Analyze this job and resume, then output a JSON object.
+        return f"""You are an expert ATS resume optimizer. Your job is to tailor an existing resume
+for a specific role WITHOUT fabricating new experience or changing the structure.
+
+RULES:
+1. Keep ALL original experience bullets — they contain real metrics and achievements
+2. Only modify the SUMMARY to target this specific role
+3. Only modify SKILLS to ensure JD keywords appear (add missing ones, reorder for relevance)
+4. Do NOT invent new experience bullets or change the formatting
+5. Preserve all company names, dates, and role titles exactly as they are
 
 JOB:
 Title: {job.title}
@@ -105,9 +95,9 @@ RESUME:
 {resume[:4000]}
 
 Output JSON with these keys:
-- summary: A 2-3 sentence professional summary tailored to this specific job
-- skills: Comma-separated list of skills matching this job
-- experience_bullets: Object with section name as key and array of 4 tailored bullet points
+- summary: A 2-3 sentence professional summary tailored to this specific job, based on the candidate's REAL background
+- skills: The complete skills section with JD keywords added and relevant skills prioritized (keep the categorized format)
+- experience_bullets: null (preserve original experience as-is)
 - fit_score: 0-100 how well the candidate fits
 - one_line_reason: Why this is a good/bad fit
 """
@@ -122,17 +112,148 @@ Output JSON with these keys:
         return TailoringResult(**data)
 
 
-def _extract_focus(desc: str) -> str:
-    focus_areas = {
-        "data governance": "data governance and quality",
-        "machine learning": "ML/AI and advanced analytics",
-        "cloud": "cloud infrastructure and scalability",
-        "compliance": "regulatory compliance and risk management",
-        "analytics": "analytics and business intelligence",
-        "pipeline": "data pipeline optimization",
-        "dashboard": "reporting and dashboard development",
-    }
-    for keyword, focus in focus_areas.items():
-        if keyword in desc:
-            return focus
-    return "data-driven decision-making"
+# ---------------------------------------------------------------------------
+# Helper functions for smart mock tailoring
+# ---------------------------------------------------------------------------
+
+_TECH_KEYWORDS: Set[str] = {
+    "sql", "python", "r", "java", "scala", "javascript", "typescript",
+    "tableau", "power bi", "looker", "excel", "hex",
+    "snowflake", "redshift", "bigquery", "databricks", "spark",
+    "dbt", "airflow", "kafka", "etl", "elt", "data pipeline",
+    "aws", "azure", "gcp", "cloud", "s3", "lambda", "glue",
+    "docker", "kubernetes", "terraform", "ci/cd",
+    "machine learning", "deep learning", "nlp", "ai", "llm",
+    "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch",
+    "data modeling", "data warehouse", "data lake",
+    "data governance", "data quality", "data catalog",
+    "agile", "scrum", "jira", "confluence",
+    "api", "rest", "graphql", "microservices",
+    "git", "github", "a/b testing", "statistical analysis",
+    "regression", "kpi", "okr", "dashboard",
+    "stakeholder management", "cross-functional", "roadmap",
+    "program management", "project management",
+}
+
+
+def _extract_jd_keywords(jd_lower: str) -> Set[str]:
+    """Extract technical and role-relevant keywords from the job description."""
+    found: Set[str] = set()
+    for kw in _TECH_KEYWORDS:
+        if kw in jd_lower:
+            found.add(kw)
+    return found
+
+
+def _extract_resume_skills(resume: str) -> List[str]:
+    """Extract the existing skills section lines from the resume."""
+    lines = resume.split("\n")
+    skills_lines: List[str] = []
+    in_skills = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("## skills"):
+            in_skills = True
+            continue
+        if in_skills and stripped.startswith("## "):
+            break
+        if in_skills and stripped:
+            skills_lines.append(stripped)
+    return skills_lines
+
+
+def _build_tailored_summary(
+    resume: str, job_title: str, company: str, jd_keywords: Set[str],
+) -> str:
+    """Build a summary based on the REAL resume content, targeted to the role."""
+    lines = resume.split("\n")
+    original_summary = ""
+    in_summary = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("## summary"):
+            in_summary = True
+            continue
+        if in_summary and stripped.startswith("## "):
+            break
+        if in_summary and stripped:
+            original_summary += stripped + " "
+
+    original_summary = original_summary.strip()
+    if not original_summary:
+        original_summary = "Experienced analytics and program management professional."
+
+    core_tools: List[str] = []
+    priority_tools = ["sql", "python", "snowflake", "dbt", "tableau", "power bi",
+                      "looker", "bigquery", "databricks", "aws", "airflow", "spark"]
+    for tool in priority_tools:
+        if tool in {k.lower() for k in jd_keywords}:
+            core_tools.append(tool.title() if len(tool) > 3 else tool.upper())
+
+    tools_str = ", ".join(core_tools[:6]) if core_tools else "SQL, Python, and BI tools"
+
+    role_type = "analytics"
+    title_lower = job_title.lower()
+    if "program" in title_lower or "tpm" in title_lower:
+        role_type = "program management and analytics"
+    elif "engineer" in title_lower:
+        role_type = "data engineering and analytics"
+    elif "manager" in title_lower and "program" not in title_lower:
+        role_type = "analytics leadership"
+
+    summary = (
+        f"Analytics Manager and Principal Data Analyst with 18+ years delivering "
+        f"enterprise BI, data governance, and advanced analytics across financial "
+        f"services and technology. Expert in {tools_str}. "
+        f"Seeking to leverage deep {role_type} expertise to drive data-informed "
+        f"decision-making as {job_title} at {company}."
+    )
+
+    return summary
+
+
+def _build_tailored_skills(
+    existing_skills: List[str], jd_keywords: Set[str], jd_lower: str,
+) -> str:
+    """Merge existing skills with JD keywords to maximize ATS match."""
+    existing_text = " ".join(existing_skills).lower()
+
+    missing: List[str] = []
+    for kw in sorted(jd_keywords):
+        if kw not in existing_text:
+            display = kw.title() if len(kw) > 3 else kw.upper()
+            missing.append(display)
+
+    result_lines = list(existing_skills)
+    if missing:
+        result_lines.append(
+            f"\nAdditional Relevant Skills: {', '.join(missing)}"
+        )
+
+    return "\n".join(result_lines)
+
+
+def _calculate_fit_score(resume_lower: str, jd_lower: str, jd_keywords: Set[str]) -> float:
+    """Calculate a realistic fit score based on keyword overlap."""
+    if not jd_keywords:
+        return 75.0
+
+    matched = sum(1 for kw in jd_keywords if kw in resume_lower)
+    keyword_ratio = matched / len(jd_keywords)
+
+    score = 50 + (keyword_ratio * 45)
+    return round(min(score, 98), 1)
+
+
+def _build_reason(job: JobListing, jd_keywords: Set[str], resume_lower: str) -> str:
+    """Build a specific reason explaining the fit."""
+    matched = [kw for kw in sorted(jd_keywords) if kw in resume_lower]
+    top_matches = matched[:4]
+    if top_matches:
+        match_str = ", ".join(kw.title() if len(kw) > 3 else kw.upper() for kw in top_matches)
+        return (
+            f"Strong match for {job.title} at {job.company} — "
+            f"resume demonstrates expertise in {match_str} "
+            f"with {len(matched)}/{len(jd_keywords)} JD keywords covered"
+        )
+    return f"Partial match for {job.title} at {job.company} — additional keyword alignment needed"

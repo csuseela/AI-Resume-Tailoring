@@ -20,20 +20,27 @@ class ResumeLoaderService:
         return self._load_local()
 
     def _load_local(self) -> str:
+        # Prefer .md — it has proper markdown structure that the tailoring
+        # pipeline and docx_writer both depend on. The docx_writer generates
+        # a professional Word document from the tailored markdown output.
+        md_files = list(self.resume_dir.glob("*.md"))
+        if md_files:
+            text = md_files[0].read_text(encoding="utf-8")
+            logger.info("Loaded .md resume: %s (%d chars)", md_files[0].name, len(text))
+            return text
+
         docx_files = list(self.resume_dir.glob("*.docx"))
         if docx_files:
             try:
                 return self._read_docx(docx_files[0])
             except Exception as exc:
-                logger.warning("Failed to read .docx (%s), falling back to .md", exc)
-
-        md_files = list(self.resume_dir.glob("*.md"))
-        if md_files:
-            return md_files[0].read_text(encoding="utf-8")
+                logger.warning("Failed to read .docx (%s)", exc)
 
         txt_files = list(self.resume_dir.glob("*.txt"))
         if txt_files:
-            return txt_files[0].read_text(encoding="utf-8")
+            text = txt_files[0].read_text(encoding="utf-8")
+            logger.info("Loaded .txt resume: %s (%d chars)", txt_files[0].name, len(text))
+            return text
 
         raise FileNotFoundError(f"No resume found in {self.resume_dir}")
 
@@ -46,14 +53,8 @@ class ResumeLoaderService:
             logger.info("Loaded .docx resume: %s (%d chars)", path.name, len(text))
             return text
         except ImportError:
-            logger.warning("python-docx not installed, falling back to .md")
-            return self._load_local_md_only()
-
-    def _load_local_md_only(self) -> str:
-        md_files = list(self.resume_dir.glob("*.md"))
-        if md_files:
-            return md_files[0].read_text(encoding="utf-8")
-        raise FileNotFoundError(f"No .md resume found in {self.resume_dir}")
+            logger.warning("python-docx not installed")
+            raise FileNotFoundError("python-docx not available and no .md found")
 
     def _load_from_gdrive(self) -> str:
         import requests
