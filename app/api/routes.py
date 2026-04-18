@@ -127,6 +127,31 @@ def download_file(filename: str) -> FileResponse:
     return FileResponse(path=str(file_path), filename=filename, media_type=media_type)
 
 
+@router.get("/api/download-daily-excel")
+def download_daily_excel(date: str = "") -> FileResponse:
+    """Download the date-stamped daily Excel file (YYYY-MM-DD)."""
+    settings = _container.get("settings")
+    if not settings:
+        raise HTTPException(status_code=500, detail="Settings not initialized")
+
+    if not date:
+        from datetime import datetime
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    daily_path = settings.output_dir / f"job_tracker_{date}.xlsx"
+    if not daily_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Excel file found for {date}. Run the workflow first.",
+        )
+
+    return FileResponse(
+        path=str(daily_path),
+        filename=f"job_tracker_{date}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @router.get("/api/email-preview")
 def get_latest_email_preview() -> HTMLResponse:
     settings = _container.get("settings")

@@ -29,8 +29,31 @@ class ExcelTrackerService:
         self.xlsx_path.parent.mkdir(parents=True, exist_ok=True)
 
     def append_rows(self, rows: List[Dict[str, Any]]) -> Path:
-        if self.xlsx_path.exists():
-            wb = load_workbook(str(self.xlsx_path))
+        """Write rows to both the cumulative tracker and a daily date-stamped file."""
+        run_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        date_stamp = datetime.now().strftime("%Y-%m-%d")
+
+        self._write_to_file(self.xlsx_path, rows, run_date)
+
+        daily_name = f"job_tracker_{date_stamp}.xlsx"
+        daily_path = self.xlsx_path.parent / daily_name
+        self._write_to_file(daily_path, rows, run_date)
+
+        logger.info(
+            "Excel tracker updated: cumulative=%s daily=%s (%d rows added)",
+            self.xlsx_path.name, daily_name, len(rows),
+        )
+        return self.xlsx_path
+
+    def get_daily_path(self, date_str: str) -> Path:
+        """Return the path to the daily Excel file for a given date (YYYY-MM-DD)."""
+        return self.xlsx_path.parent / f"job_tracker_{date_str}.xlsx"
+
+    def _write_to_file(
+        self, path: Path, rows: List[Dict[str, Any]], run_date: str,
+    ) -> None:
+        if path.exists():
+            wb = load_workbook(str(path))
             ws = wb.active
         else:
             wb = Workbook()
@@ -44,7 +67,6 @@ class ExcelTrackerService:
                 cell.font = HEADER_FONT
                 cell.alignment = Alignment(horizontal="center")
 
-        run_date = datetime.now().strftime("%Y-%m-%d %H:%M")
         for row in rows:
             apply_url = row.get("apply_url", "")
             resume_path = row.get("output_path", "")
@@ -70,6 +92,4 @@ class ExcelTrackerService:
                 cell.font = LINK_FONT
                 cell.value = resume_path
 
-        wb.save(str(self.xlsx_path))
-        logger.info("Excel tracker updated: %s (%d rows added)", self.xlsx_path, len(rows))
-        return self.xlsx_path
+        wb.save(str(path))

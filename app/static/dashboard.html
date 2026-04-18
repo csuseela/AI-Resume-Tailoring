@@ -20,7 +20,7 @@
   }
   .header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
   .header .subtitle { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 4px; }
-  .header-actions { display: flex; gap: 12px; align-items: center; }
+  .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .btn {
     padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
     cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
@@ -30,6 +30,8 @@
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
   .btn-secondary { background: rgba(255,255,255,0.15); color: white; }
   .btn-secondary:hover { background: rgba(255,255,255,0.25); }
+  .btn-green { background: var(--green); color: white; }
+  .btn-green:hover { background: #059669; }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 24px 40px; }
   .stat-card {
@@ -45,6 +47,29 @@
   .content { padding: 0 40px 40px; }
   .section-title { font-size: 18px; font-weight: 700; margin: 24px 0 12px; display: flex; align-items: center; gap: 10px; }
   .badge { background: var(--accent); color: white; font-size: 12px; padding: 2px 10px; border-radius: 12px; }
+
+  .filters {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .filter-group { display: flex; align-items: center; gap: 8px; }
+  .filter-group label { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .filter-group select, .filter-group input[type="number"] {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 13px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .filter-group select:focus, .filter-group input[type="number"]:focus { border-color: var(--accent); }
+  .filter-group select { min-width: 200px; max-width: 300px; }
+  .filter-group input[type="range"] {
+    -webkit-appearance: none; width: 120px; height: 6px; border-radius: 3px;
+    background: var(--border); outline: none;
+  }
+  .filter-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+  }
+  .filter-count { font-size: 12px; color: var(--muted); margin-left: auto; }
 
   .table-wrap {
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
@@ -100,6 +125,7 @@
     <div class="subtitle">Automated Job Discovery & Resume Optimization</div>
   </div>
   <div class="header-actions">
+    <button class="btn btn-green" onclick="downloadDailyExcel()">Download Today's Excel</button>
     <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
     <button class="btn btn-primary" id="runBtn" onclick="runWorkflow()">Run Workflow Now</button>
   </div>
@@ -107,7 +133,7 @@
 
 <div class="stats" id="stats">
   <div class="stat-card stat-blue"><div class="number" id="totalJobs">—</div><div class="label">Jobs Scanned (Last Run)</div></div>
-  <div class="stat-card stat-green"><div class="number" id="totalProcessed">—</div><div class="label">Resumes Tailored</div></div>
+  <div class="stat-card stat-green"><div class="number" id="totalProcessed">—</div><div class="label">Showing / Total</div></div>
   <div class="stat-card stat-yellow"><div class="number" id="avgAts">—</div><div class="label">Avg ATS Score</div></div>
   <div class="stat-card stat-blue"><div class="number" id="h1bCount">—</div><div class="label">H1B Sponsors</div></div>
 </div>
@@ -118,17 +144,38 @@
     <span>Scheduler active — auto-runs daily at <strong>7:00 AM</strong> (America/New_York)</span>
   </div>
 
+  <div class="filters">
+    <div class="filter-group">
+      <label for="filterLocation">Location:</label>
+      <select id="filterLocation" onchange="applyFilters()">
+        <option value="">All Locations</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filterAts">Min ATS:</label>
+      <input type="range" id="filterAts" min="0" max="100" value="0" oninput="applyFilters()">
+      <span id="atsLabel" style="font-size:13px;color:var(--accent);font-weight:700;min-width:36px">0%</span>
+    </div>
+    <div class="filter-group">
+      <label for="filterDate">Date:</label>
+      <select id="filterDate" onchange="applyFilters()">
+        <option value="">All Dates</option>
+      </select>
+    </div>
+    <div class="filter-count" id="filterCount"></div>
+  </div>
+
   <div class="section-title">Job Tracker <span class="badge" id="jobCount">0</span></div>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Company</th><th>Role</th><th>Location</th><th>Match</th><th>ATS</th>
+          <th>Date</th><th>Company</th><th>Role</th><th>Location</th><th>Match</th><th>ATS</th>
           <th>H1B</th><th>Resume</th><th>Apply</th><th>Status</th>
         </tr>
       </thead>
       <tbody id="trackerBody">
-        <tr><td colspan="9" class="loading"><div class="spinner"></div><br>Loading jobs...</td></tr>
+        <tr><td colspan="10" class="loading"><div class="spinner"></div><br>Loading jobs...</td></tr>
       </tbody>
     </table>
   </div>
@@ -150,6 +197,7 @@
 
 <script>
 const API = '';
+let allRows = [];
 
 async function loadData() {
   try {
@@ -157,17 +205,54 @@ async function loadData() {
       fetch(API + '/api/tracker').then(r => r.json()),
       fetch(API + '/workflow/history').then(r => r.json()),
     ]);
-    renderTracker(tracker);
+    allRows = tracker;
+    populateFilterOptions(tracker);
+    applyFilters();
     renderHistory(history);
   } catch (e) {
     showToast('Failed to load data: ' + e.message, true);
   }
 }
 
+function populateFilterOptions(rows) {
+  const locSelect = document.getElementById('filterLocation');
+  const dateSelect = document.getElementById('filterDate');
+  const currentLoc = locSelect.value;
+  const currentDate = dateSelect.value;
+
+  const locations = [...new Set(rows.map(r => r.location || '').filter(Boolean))].sort();
+  locSelect.innerHTML = '<option value="">All Locations</option>' +
+    locations.map(l => `<option value="${esc(l)}"${l === currentLoc ? ' selected' : ''}>${esc(l)}</option>`).join('');
+
+  const dates = [...new Set(rows.map(r => (r.run_date || '').split(' ')[0]).filter(Boolean))].sort().reverse();
+  dateSelect.innerHTML = '<option value="">All Dates</option>' +
+    dates.map(d => `<option value="${d}"${d === currentDate ? ' selected' : ''}>${d}</option>`).join('');
+}
+
+function applyFilters() {
+  const locFilter = document.getElementById('filterLocation').value;
+  const atsMin = parseInt(document.getElementById('filterAts').value) || 0;
+  const dateFilter = document.getElementById('filterDate').value;
+  document.getElementById('atsLabel').textContent = atsMin + '%';
+
+  const filtered = allRows.filter(r => {
+    if (locFilter && r.location !== locFilter) return false;
+    const ats = parseInt((r.ats_score || '0').replace('%', ''));
+    if (ats < atsMin) return false;
+    if (dateFilter && !(r.run_date || '').startsWith(dateFilter)) return false;
+    return true;
+  });
+
+  document.getElementById('filterCount').textContent =
+    `Showing ${filtered.length} of ${allRows.length} jobs`;
+
+  renderTracker(filtered);
+}
+
 function renderTracker(rows) {
   const tbody = document.getElementById('trackerBody');
   document.getElementById('jobCount').textContent = rows.length;
-  document.getElementById('totalProcessed').textContent = rows.length;
+  document.getElementById('totalProcessed').textContent = rows.length + ' / ' + allRows.length;
 
   let h1bCount = 0, totalAts = 0, atsCount = 0;
   rows.forEach(r => {
@@ -179,7 +264,10 @@ function renderTracker(rows) {
   document.getElementById('avgAts').textContent = atsCount > 0 ? Math.round(totalAts / atsCount) + '%' : '—';
 
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><p>No jobs yet.</p><p>Click "Run Workflow Now" to start.</p></td></tr>';
+    const msg = allRows.length > 0
+      ? '<p>No jobs match the current filters.</p><p>Adjust filters above to see results.</p>'
+      : '<p>No jobs yet.</p><p>Click "Run Workflow Now" to start.</p>';
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">${msg}</td></tr>`;
     return;
   }
 
@@ -187,7 +275,9 @@ function renderTracker(rows) {
     const atsVal = parseInt((r.ats_score || '0').replace('%',''));
     const atsClass = atsVal >= 80 ? 'ats-high' : atsVal >= 60 ? 'ats-mid' : 'ats-low';
     const filename = (r.output_path || '').split('/').pop();
+    const dateShort = (r.run_date || '').split(' ')[0] || '';
     return `<tr>
+      <td style="color:var(--muted);font-size:12px">${esc(dateShort)}</td>
       <td><strong>${esc(r.company)}</strong></td>
       <td>${esc(r.role)}</td>
       <td>${esc(r.location)} <span style="color:var(--muted)">(${esc(r.remote_type)})</span></td>
@@ -237,6 +327,11 @@ async function runWorkflow() {
     btn.disabled = false;
     btn.innerHTML = 'Run Workflow Now';
   }
+}
+
+function downloadDailyExcel() {
+  const today = new Date().toISOString().split('T')[0];
+  window.open(API + '/api/download-daily-excel?date=' + today, '_blank');
 }
 
 function showToast(msg, isError) {

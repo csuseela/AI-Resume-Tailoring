@@ -57,13 +57,14 @@ class TrackerService:
             return db.query(WorkflowRun).order_by(desc(WorkflowRun.id)).limit(limit).all()
 
     def get_today_job_ids(self) -> Set[str]:
-        today = date.today()
+        utc_today = datetime.utcnow().strftime("%Y-%m-%d")
         with self.session_factory() as db:
             rows = (
                 db.query(TrackerRecord.job_id)
                 .join(WorkflowRun, TrackerRecord.run_id == WorkflowRun.id)
-                .filter(func.date(WorkflowRun.run_date) == today)
-                .filter(TrackerRecord.status == "success")
+                .filter(func.date(WorkflowRun.run_date) == utc_today)
                 .all()
             )
-            return {r[0] for r in rows}
+            ids = {r[0] for r in rows}
+            logger.info("Found %d already-processed job IDs for %s", len(ids), utc_today)
+            return ids
