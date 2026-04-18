@@ -106,7 +106,7 @@
 </div>
 
 <div class="stats" id="stats">
-  <div class="stat-card stat-blue"><div class="number" id="totalJobs">—</div><div class="label">Jobs Found</div></div>
+  <div class="stat-card stat-blue"><div class="number" id="totalJobs">—</div><div class="label">Jobs Scanned (Last Run)</div></div>
   <div class="stat-card stat-green"><div class="number" id="totalProcessed">—</div><div class="label">Resumes Tailored</div></div>
   <div class="stat-card stat-yellow"><div class="number" id="avgAts">—</div><div class="label">Avg ATS Score</div></div>
   <div class="stat-card stat-blue"><div class="number" id="h1bCount">—</div><div class="label">H1B Sponsors</div></div>
@@ -137,7 +137,7 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Run ID</th><th>Date</th><th>Status</th><th>Jobs Found</th><th>Processed</th></tr>
+        <tr><th>Run ID</th><th>Date</th><th>Status</th><th>Jobs Scanned</th><th>Resumes Tailored</th></tr>
       </thead>
       <tbody id="historyBody">
         <tr><td colspan="5" class="loading"><div class="spinner"></div><br>Loading...</td></tr>
@@ -205,7 +205,8 @@ function renderHistory(runs) {
   const tbody = document.getElementById('historyBody');
   document.getElementById('historyCount').textContent = runs.length;
   if (runs.length > 0) {
-    document.getElementById('totalJobs').textContent = runs.reduce((s,r) => s + (r.jobs_found || 0), 0);
+    const latest = runs[0];
+    document.getElementById('totalJobs').textContent = latest.jobs_found || 0;
   }
   if (runs.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No runs yet.</td></tr>';

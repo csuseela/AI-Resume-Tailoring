@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, List
 
 import requests
@@ -31,13 +32,17 @@ class LeverFetcher(BaseJobFetcher):
                     postings = []
                 for raw in postings:
                     categories = raw.get("categories", {})
+                    created_ms = raw.get("createdAt", 0)
+                    posted_str = ""
+                    if created_ms:
+                        posted_str = datetime.utcfromtimestamp(created_ms / 1000).strftime("%Y-%m-%dT%H:%M:%SZ")
                     normalized = normalize_job(
                         {
                             "id": raw.get("id", ""),
                             "title": raw.get("text", ""),
                             "company": slug.replace("-", " ").title(),
                             "location": categories.get("location", ""),
-                            "posted_at": "",
+                            "posted_at": posted_str,
                             "url": raw.get("hostedUrl", raw.get("applyUrl", "")),
                             "description": raw.get("descriptionPlain", ""),
                             "source": "lever",

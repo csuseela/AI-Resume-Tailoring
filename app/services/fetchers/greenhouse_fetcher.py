@@ -28,14 +28,16 @@ class GreenhouseFetcher(BaseJobFetcher):
                 resp.raise_for_status()
                 data = resp.json()
                 for raw_job in data.get("jobs", []):
+                    job_id = str(raw_job.get("id", ""))
+                    board_url = f"https://job-boards.greenhouse.io/{slug}/jobs/{job_id}"
                     normalized = normalize_job(
                         {
-                            "id": str(raw_job.get("id", "")),
+                            "id": job_id,
                             "title": raw_job.get("title", ""),
                             "company": slug.replace("-", " ").title(),
                             "location": raw_job.get("location", {}).get("name", ""),
                             "posted_at": raw_job.get("updated_at", ""),
-                            "url": raw_job.get("absolute_url", ""),
+                            "url": board_url,
                             "description": raw_job.get("content", ""),
                             "source": "greenhouse",
                         }
