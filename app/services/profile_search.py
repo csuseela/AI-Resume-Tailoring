@@ -45,18 +45,15 @@ H1B_SPONSOR_COMPANIES: Set[str] = {
 }
 
 STARTUP_GREENHOUSE_SLUGS: List[str] = [
-    "stripe", "airbnb", "figma", "notion", "ramp",
-    "brex", "rippling", "gusto", "plaid", "databricks",
-    "datadog", "snowflake", "confluent", "hashicorp",
-    "scale", "anduril", "openai", "anthropic",
+    "stripe", "airbnb", "figma", "brex", "gusto",
+    "databricks", "datadog", "anthropic",
     "coinbase", "robinhood", "chime", "discord",
-    "airtable", "asana", "hubspot",
-    "palantir", "relativity", "cockroachlabs",
+    "airtable", "asana", "relativity", "cockroachlabs",
+    "scaleai", "andurilindustries",
 ]
 
 STARTUP_LEVER_SLUGS: List[str] = [
-    "netflix", "spotify", "reddit",
-    "sofi", "deel", "remotecom",
+    "spotify", "plaid", "palantir",
 ]
 
 

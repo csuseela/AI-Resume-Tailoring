@@ -33,13 +33,22 @@ class MultiFetcher(BaseJobFetcher):
 def create_fetcher(settings: "Settings") -> BaseJobFetcher:
     provider = settings.job_source_provider.lower().strip()
 
+    if provider == "mock":
+        from app.services.fetchers.mock_fetcher import MockJobFetcher
+        logger.info("Using MOCK job source (for testing only)")
+        return MockJobFetcher(settings.mock_data_path)
+
     if provider == "all":
         fetchers = _build_all_fetchers(settings)
-        return MultiFetcher(fetchers) if fetchers else _build_single("mock", settings)
+        if not fetchers:
+            raise RuntimeError("No live job fetchers could be built. Check your config.")
+        return MultiFetcher(fetchers)
 
     if provider == "startups":
         fetchers = _build_startup_fetchers(settings)
-        return MultiFetcher(fetchers) if fetchers else _build_single("mock", settings)
+        if not fetchers:
+            raise RuntimeError("No startup fetchers could be built. Check your config.")
+        return MultiFetcher(fetchers)
 
     if "," in provider:
         fetchers = []
@@ -47,9 +56,14 @@ def create_fetcher(settings: "Settings") -> BaseJobFetcher:
             f = _build_single(p.strip(), settings)
             if f:
                 fetchers.append(f)
-        return MultiFetcher(fetchers) if fetchers else _build_single("mock", settings)
+        if not fetchers:
+            raise RuntimeError(f"No fetchers could be built for: {provider}")
+        return MultiFetcher(fetchers)
 
-    return _build_single(provider, settings) or _build_single("mock", settings)
+    fetcher = _build_single(provider, settings)
+    if not fetcher:
+        raise RuntimeError(f"Unknown job source provider: {provider}")
+    return fetcher
 
 
 def _build_all_fetchers(settings: "Settings") -> List[BaseJobFetcher]:
@@ -77,10 +91,6 @@ def _build_startup_fetchers(settings: "Settings") -> List[BaseJobFetcher]:
 
 
 def _build_single(provider: str, settings: "Settings") -> Optional[BaseJobFetcher]:
-    if provider == "mock":
-        from app.services.fetchers.mock_fetcher import MockJobFetcher
-        return MockJobFetcher(settings.mock_data_path)
-
     if provider == "greenhouse":
         from app.services.fetchers.greenhouse_fetcher import GreenhouseFetcher
         from app.services.profile_search import get_startup_greenhouse_slugs
@@ -107,5 +117,5 @@ def _build_single(provider: str, settings: "Settings") -> Optional[BaseJobFetche
             search_location=settings.apify_search_location,
         )
 
-    logger.warning("Unknown job source provider: %s — falling back to mock", provider)
+    logger.error("Unknown job source provider: %s", provider)
     return None

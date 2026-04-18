@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
 
-    job_source_provider: str = "mock"
+    job_source_provider: str = "startups"
     apify_api_token: str = ""
     apify_actor_id: str = ""
     apify_run_mode: str = "last_run"
