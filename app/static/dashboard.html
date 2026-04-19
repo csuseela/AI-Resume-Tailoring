@@ -115,6 +115,59 @@
   }
   .schedule-dot { width: 10px; height: 10px; background: var(--green); border-radius: 50%; animation: pulse 2s ease infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .upload-section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px 32px; margin: 24px 40px 0;
+  }
+  .upload-section h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .upload-area {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 32px;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+    position: relative;
+  }
+  .upload-area:hover, .upload-area.dragover {
+    border-color: var(--accent); background: rgba(59, 130, 246, 0.06);
+  }
+  .upload-area input[type="file"] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer;
+  }
+  .upload-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.7; }
+  .upload-text { font-size: 14px; color: var(--muted); }
+  .upload-text strong { color: var(--accent); }
+  .upload-hint { font-size: 12px; color: var(--muted); margin-top: 6px; opacity: 0.7; }
+
+  .resume-files { margin-top: 16px; }
+  .resume-file {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: var(--card); border-radius: 8px;
+    margin-bottom: 8px; font-size: 13px;
+  }
+  .resume-file-info { display: flex; align-items: center; gap: 10px; }
+  .resume-file-icon { font-size: 20px; opacity: 0.7; }
+  .resume-file-name { font-weight: 600; }
+  .resume-file-meta { color: var(--muted); font-size: 12px; }
+  .resume-file-actions { display: flex; gap: 8px; }
+  .btn-sm {
+    padding: 5px 12px; border: none; border-radius: 6px; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .btn-danger { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+  .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+
+  .upload-progress {
+    margin-top: 12px; display: none;
+  }
+  .upload-progress.active { display: block; }
+  .progress-bar {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    transition: width 0.3s ease; width: 0%;
+  }
+  .progress-text { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
 </style>
 </head>
 <body>
@@ -129,6 +182,21 @@
     <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
     <button class="btn btn-primary" id="runBtn" onclick="runWorkflow()">Run Workflow Now</button>
   </div>
+</div>
+
+<div class="upload-section">
+  <h2>📄 Resume Management</h2>
+  <div class="upload-area" id="uploadArea">
+    <input type="file" id="resumeInput" accept=".md,.txt,.docx,.pdf" onchange="handleFileSelect(event)">
+    <div class="upload-icon">⬆️</div>
+    <div class="upload-text">Drag & drop your resume here, or <strong>click to browse</strong></div>
+    <div class="upload-hint">Supported formats: .md, .txt, .docx, .pdf — Max 10 MB</div>
+  </div>
+  <div class="upload-progress" id="uploadProgress">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">Uploading...</div>
+  </div>
+  <div class="resume-files" id="resumeFiles"></div>
 </div>
 
 <div class="stats" id="stats">
@@ -350,7 +418,127 @@ function showToast(msg, isError) {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+// --- Resume Upload ---
+
+const uploadArea = document.getElementById('uploadArea');
+
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('dragover');
+});
+
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.classList.remove('dragover');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) uploadResume(e.dataTransfer.files[0]);
+});
+
+function handleFileSelect(e) {
+  if (e.target.files.length > 0) uploadResume(e.target.files[0]);
+}
+
+async function uploadResume(file) {
+  const allowed = ['.md', '.txt', '.docx', '.pdf'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!allowed.includes(ext)) {
+    showToast('Unsupported file type. Use: ' + allowed.join(', '), true);
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('File too large. Max 10 MB.', true);
+    return;
+  }
+
+  const progress = document.getElementById('uploadProgress');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  progress.classList.add('active');
+  progressFill.style.width = '30%';
+  progressText.textContent = 'Uploading ' + file.name + '...';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    progressFill.style.width = '60%';
+    const resp = await fetch(API + '/api/upload-resume', { method: 'POST', body: formData });
+    progressFill.style.width = '90%';
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+
+    const result = await resp.json();
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Done!';
+    showToast(result.message);
+    loadResumeInfo();
+  } catch (e) {
+    showToast('Upload failed: ' + e.message, true);
+  } finally {
+    setTimeout(() => {
+      progress.classList.remove('active');
+      progressFill.style.width = '0%';
+    }, 1500);
+    document.getElementById('resumeInput').value = '';
+  }
+}
+
+async function loadResumeInfo() {
+  try {
+    const resp = await fetch(API + '/api/resume-info');
+    const data = await resp.json();
+    const container = document.getElementById('resumeFiles');
+    if (!data.files || data.files.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:13px">No resume uploaded yet. Upload one above to get started.</div>';
+      return;
+    }
+    container.innerHTML = data.files.map(f => {
+      const sizeStr = f.size < 1024 ? f.size + ' B'
+        : f.size < 1048576 ? (f.size / 1024).toFixed(1) + ' KB'
+        : (f.size / 1048576).toFixed(1) + ' MB';
+      const icon = f.name.endsWith('.md') ? '📝' : f.name.endsWith('.docx') ? '📄' : f.name.endsWith('.pdf') ? '📕' : '📃';
+      return `<div class="resume-file">
+        <div class="resume-file-info">
+          <span class="resume-file-icon">${icon}</span>
+          <div>
+            <div class="resume-file-name">${esc(f.name)}</div>
+            <div class="resume-file-meta">${sizeStr} · Modified ${esc(f.modified)}</div>
+          </div>
+        </div>
+        <div class="resume-file-actions">
+          <button class="btn-sm btn-danger" onclick="deleteResume('${esc(f.name)}')">Remove</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load resume info:', e);
+  }
+}
+
+async function deleteResume(filename) {
+  if (!confirm('Remove "' + filename + '" from resumes?')) return;
+  try {
+    const resp = await fetch(API + '/api/resume/' + encodeURIComponent(filename), { method: 'DELETE' });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Delete failed');
+    }
+    const result = await resp.json();
+    showToast(result.message);
+    loadResumeInfo();
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, true);
+  }
+}
+
 loadData();
+loadResumeInfo();
 setInterval(loadData, 60000);
 </script>
 </body>
